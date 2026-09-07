@@ -608,7 +608,10 @@ public class ClusterManagementDialog {
                     "Open an image, or a project with images, to sub-cluster.");
             return;
         }
-        new ClusteringDialog(qupath, className).show();
+        // Pass the result the class came from, so the sub-cluster records a real
+        // parent. Null on the manual path: there is no saved result to point at.
+        new ClusteringDialog(qupath, className,
+                isSavedPath() ? activeSourceName : null).show();
     }
 
     private void renameSelected() {

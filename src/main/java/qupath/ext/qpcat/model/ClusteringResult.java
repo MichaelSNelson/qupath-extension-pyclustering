@@ -146,6 +146,12 @@ public class ClusteringResult {
     public String getDerivedOp() { return derivedOp; }
     public void setDerivedOp(String v) { this.derivedOp = v; }
 
+    // The class a sub-cluster run split. Held as a field rather than parsed back
+    // out of derivedOp, so the saved JSON and the run record can state it exactly.
+    private String subclusterParentClass;
+    public String getSubclusterParentClass() { return subclusterParentClass; }
+    public void setSubclusterParentClass(String v) { this.subclusterParentClass = v; }
+
     /** True when this result carries at least one renamed / merged cluster. */
     public boolean hasClusterNames() { return clusterNames != null && !clusterNames.isEmpty(); }
 

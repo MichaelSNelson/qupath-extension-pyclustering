@@ -185,13 +185,17 @@ Three things worth knowing:
 - **A merge is reversible because the raw labels are never rewritten.** Merging clusters 0 and
   1 into "Immune" maps two labels to one *name*; the per-cell integers stay 0 and 1. That is
   what lets the pre-merge version be restored exactly. A split works the same way in reverse.
-- **Step back works on an edit, not on every result.** A rename, merge or split writes a copy
-  that records its parent, so the button is live and names the result it will return to. A
-  **sub-cluster** result does not record a parent result -- it names the parent *class* in its
-  scope label ("... (sub-cluster of 'Cluster 1')") but is not linked to the run that produced
-  that class -- so Step back is greyed out for it. The same is true of **Analyze current
-  classifications**, which reads whatever the cells carry and so has no single parent to return
-  to. In both cases use **Put this version on the cells** on the earlier result instead.
+- **Every derived result says where it came from, on disk.** Beside each result the folder
+  holds `<name>_RUN_INFO.txt` and `<name>_config.json`. For a **sub-cluster** the record names
+  the parent result and the parent class, and carries a Groovy script that re-runs it (loading
+  the config sidecar, so the script cannot drift from what actually ran). For a **rename, merge
+  or split** the record lists every name that changed, states which names now cover more than
+  one cluster, and says how to undo it. Both are plain text -- open them, cite them, keep them
+  with a figure.
+- **Step back works on an edit or a sub-cluster, not on every result.** Anything that records a
+  parent lights the button up and names the result it will return to. **Analyze current
+  classifications** does not: it reads whatever the cells carry, so there is no single parent to
+  return to. Use **Put this version on the cells** on the earlier result instead.
 - **Do not delete a parent you might want back.** Step back needs the earlier result to still
   exist; if you delete it in Manage Saved Results, that rung of the ladder is gone. The listing
   shows which results are parents of others precisely so you can see what a deletion would

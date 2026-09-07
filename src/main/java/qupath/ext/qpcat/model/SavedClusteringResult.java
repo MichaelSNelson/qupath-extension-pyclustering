@@ -89,6 +89,8 @@ public class SavedClusteringResult {
     // earlier result to re-apply if the edit turned out to be wrong.
     private String derivedFrom;
     private String derivedOp;
+    // The class a sub-cluster run split, when this result is one.
+    private String subclusterParentClass;
 
     // Spatial analysis
     private double[][] nhoodEnrichment;
@@ -235,6 +237,9 @@ public class SavedClusteringResult {
     public void setDerivedFrom(String v) { this.derivedFrom = v; }
 
     /** What produced this copy, e.g. "rename/merge"; null for an original run. */
+    public String getSubclusterParentClass() { return subclusterParentClass; }
+    public void setSubclusterParentClass(String v) { this.subclusterParentClass = v; }
+
     public String getDerivedOp() { return derivedOp; }
     public void setDerivedOp(String v) { this.derivedOp = v; }
 
@@ -379,6 +384,7 @@ public class SavedClusteringResult {
         // disk with no lineage at all.
         saved.setDerivedFrom(result.getDerivedFrom());
         saved.setDerivedOp(result.getDerivedOp());
+        saved.setSubclusterParentClass(result.getSubclusterParentClass());
 
         if (result.hasClusterNames()) {
             saved.setClusterNames(result.getClusterNames());
@@ -454,6 +460,7 @@ public class SavedClusteringResult {
         }
         result.setDerivedFrom(derivedFrom);
         result.setDerivedOp(derivedOp);
+        result.setSubclusterParentClass(subclusterParentClass);
         result.setAnnotationInput(annotationInput);
 
         // Spatial stats expansion (v1) -- absent on older saves; the

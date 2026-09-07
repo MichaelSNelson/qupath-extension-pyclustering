@@ -87,6 +87,10 @@ public class ClusteringDialog {
     // of this class and writes "<parent>.0 / .1" labels, instead of a top-level
     // run over every cell. Set by the Manage Clusters "Sub-cluster..." action.
     private final String subclusterParentClass;
+    // Saved result the parent class came from, so the sub-cluster records a real
+    // parent instead of naming the class in free text. Null when sub-clustering
+    // was not launched from a saved result.
+    private final String subclusterSourceResult;
 
     // UI components
     // Reusable 3-way image-scope control (current / all / specific subset).
@@ -218,7 +222,7 @@ public class ClusteringDialog {
     private Spinner<Double> banksyResolutionSpinner;
 
     public ClusteringDialog(QuPathGUI qupath) {
-        this(qupath, null);
+        this(qupath, null, null);
     }
 
     /**
@@ -226,13 +230,17 @@ public class ClusteringDialog {
      * dialog re-clusters only the cells carrying that class and applies
      * hierarchical "&lt;parent&gt;.N" labels; pass null for a normal run.
      *
-     * @param qupath                the QuPath instance
-     * @param subclusterParentClass class to sub-cluster, or null for a normal run
+     * @param qupath                 the QuPath instance
+     * @param subclusterParentClass  class to sub-cluster, or null for a normal run
+     * @param subclusterSourceResult saved result the class came from, recorded as
+     *                               the sub-cluster's parent; null when unknown
      */
-    public ClusteringDialog(QuPathGUI qupath, String subclusterParentClass) {
+    public ClusteringDialog(QuPathGUI qupath, String subclusterParentClass,
+                            String subclusterSourceResult) {
         this.qupath = qupath;
         this.owner = qupath.getStage();
         this.subclusterParentClass = subclusterParentClass;
+        this.subclusterSourceResult = subclusterSourceResult;
     }
 
     public void show() {
@@ -2611,11 +2619,13 @@ public class ClusteringDialog {
                     subclusterProjectWide = true;
                     clusteredScope = entries;
                     result = workflow.runProjectSubclustering(
-                            subclusterParentClass, entries, config, progress);
+                            subclusterParentClass, entries, subclusterSourceResult,
+                            config, progress);
                 } else if (subclusterParentClass != null) {
                     // Single-image sub-cluster: relabel the open image in place.
                     clusteredScope = null;
-                    result = workflow.runSubclustering(subclusterParentClass, config, progress);
+                    result = workflow.runSubclustering(
+                            subclusterParentClass, subclusterSourceResult, config, progress);
                 } else if (config.isClusterEntireProject()) {
                     // Multi-image project clustering: all images, or just the
                     // chosen subset under the "Specific images..." scope.

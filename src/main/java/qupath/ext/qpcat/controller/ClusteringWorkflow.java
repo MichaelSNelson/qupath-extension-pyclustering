@@ -940,6 +940,28 @@ public class ClusteringWorkflow {
      * scope count on the result for the dialog footer + over-5 warning.
      * Best-effort: a save failure is logged but never fails the run.
      */
+    /**
+     * Record where a sub-cluster came from.
+     *
+     * <p>{@code derivedFrom} is the saved result whose cluster was split, so the
+     * chain is navigable and Step back has somewhere to go; {@code derivedOp} names
+     * the class, so the entry reads "sub-cluster of 'Cluster 1'" rather than just
+     * "edit". A sub-cluster launched outside Manage Clusters has no source result,
+     * and records the operation without a parent rather than inventing one.
+     *
+     * @param result           the sub-cluster result, updated in place
+     * @param parentResultName saved result the parent class came from, or null
+     * @param parentClusterName the class that was sub-clustered
+     */
+    private static void setSubclusterLineage(ClusteringResult result, String parentResultName,
+                                             String parentClusterName) {
+        if (parentResultName != null && !parentResultName.isBlank()) {
+            result.setDerivedFrom(parentResultName);
+        }
+        result.setDerivedOp("sub-cluster of '" + parentClusterName + "'");
+        result.setSubclusterParentClass(parentClusterName);
+    }
+
     private void autoSaveResult(ClusteringResult result, ClusteringConfig config,
                                 String scopeKey, String scopeLabel) {
         Project<BufferedImage> project = currentProject();
@@ -2345,6 +2367,7 @@ public class ClusteringWorkflow {
      */
     public ClusteringResult runSubclustering(
             String parentClusterName,
+            String parentResultName,
             ClusteringConfig config,
             Consumer<String> progressCallback) throws IOException {
 
@@ -2443,6 +2466,12 @@ public class ClusteringWorkflow {
         // so the sub-cluster result is reloadable via "View Past Results" and
         // renameable via "Manage Clusters". The scope label says it is a
         // sub-cluster so it reads distinctly from a normal run in the dropdown.
+        // Lineage, so the sub-cluster is linked to the run whose cluster it split
+        // rather than only naming that cluster in free text. This is what lights up
+        // "Step back": re-applying the parent restores the parent class over the
+        // '<name>.N' sub-labels.
+        setSubclusterLineage(result, parentResultName, parentClusterName);
+
         String scopeKey = (fbId != null) ? fbId : fbName;
         autoSaveResult(result, config, scopeKey,
                 fbName + " (sub-cluster of '" + parentClusterName + "')");
@@ -2706,6 +2735,7 @@ public class ClusteringWorkflow {
     public ClusteringResult runProjectSubclustering(
             String parentClusterName,
             List<ProjectImageEntry<BufferedImage>> imageEntries,
+            String parentResultName,
             ClusteringConfig config,
             Consumer<String> progressCallback) throws IOException {
 
@@ -2857,6 +2887,8 @@ public class ClusteringWorkflow {
             params.put("Images", nImages + " project image" + (nImages == 1 ? "" : "s"));
             OperationLogger.getInstance().logOperation(
                     "PROJECT SUB-CLUSTERING", params, completeMsg, elapsed);
+
+            setSubclusterLineage(result, parentResultName, parentClusterName);
 
             autoSaveResult(result, config, SavedClusteringResult.PROJECT_SCOPE_KEY,
                     nImages + " project image" + (nImages == 1 ? "" : "s")

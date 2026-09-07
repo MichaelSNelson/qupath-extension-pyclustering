@@ -401,6 +401,15 @@ public class ClusteringResultManager {
             throw new IOException("A saved result named '" + safeName + "' already exists.");
         }
 
+        // Snapshot the pre-edit names before they are replaced; the run record
+        // reports what changed, and after setClusterNames the old ones are gone.
+        Map<Integer, String> beforeNames = new LinkedHashMap<>();
+        if (saved.getClusterLabels() != null) {
+            for (int lab : saved.getClusterLabels()) {
+                if (lab >= 0) beforeNames.putIfAbsent(lab, saved.displayNameForLabel(lab));
+            }
+        }
+
         saved.setName(newName);
         saved.setTimestamp(LocalDateTime.now().toString());
         saved.setAutoSaved(false);
@@ -441,6 +450,10 @@ public class ClusteringResultManager {
         }
 
         writeJsonAtomic(targetJson, saved);
+        // A record of the edit, so a copy on disk says what it did rather than
+        // only differing from its parent by a JSON field.
+        ClusteringRunRecord.writeEditRecord(resultsDir, safeName, sourceName,
+                saved.getDerivedOp(), beforeNames, saved);
         logger.info("Wrote renamed copy '{}' of saved result '{}' ({} custom names)",
                 safeName, sourceName, nameByLabel != null ? nameByLabel.size() : 0);
         return safeName;

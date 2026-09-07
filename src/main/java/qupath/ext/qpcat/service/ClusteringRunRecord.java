@@ -9,11 +9,19 @@ import qupath.ext.qpcat.model.ClusteringConfig;
 import qupath.ext.qpcat.model.ClusteringResult;
 import qupath.lib.common.GeneralTools;
 
+import qupath.ext.qpcat.model.SavedClusteringResult;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * Writes the two reproducibility artifacts that sit next to an auto-saved
@@ -67,6 +75,122 @@ public final class ClusteringRunRecord {
         }
     }
 
+    /**
+     * Write the record for a rename/merge/split copy.
+     *
+     * <p>An edit copy is not produced by a run, so it has no config of its own and
+     * never reached {@link #write}: the copy landed on disk with no human-readable
+     * record at all, and the only way to see what an edit did was to diff two JSON
+     * files. This states the parent, the operation, and every name that changed.
+     *
+     * @param resultsDir  directory holding the saved results
+     * @param copyName    base name of the copy just written
+     * @param sourceName  the result it was made from
+     * @param derivedOp   what the edit did ("rename", "merge", "split", ...)
+     * @param beforeNames label -&gt; display name BEFORE the edit
+     * @param copy        the copy, carrying the labels and the new names
+     */
+    public static void writeEditRecord(Path resultsDir, String copyName, String sourceName,
+                                       String derivedOp, Map<Integer, String> beforeNames,
+                                       SavedClusteringResult copy) {
+        // The labels are unchanged by an edit, so the parent's config still
+        // describes how they were produced. Copy it so the copy is self-contained.
+        try {
+            Path srcConfig = resultsDir.resolve(sourceName + "_config.json");
+            if (Files.exists(srcConfig)) {
+                Files.copy(srcConfig, resultsDir.resolve(copyName + "_config.json"),
+                        StandardCopyOption.REPLACE_EXISTING);
+            }
+        } catch (IOException e) {
+            logger.warn("Could not copy config sidecar for '{}': {}", copyName, e.getMessage());
+        }
+        try {
+            Files.writeString(resultsDir.resolve(copyName + "_RUN_INFO.txt"),
+                    buildEditInfo(copyName, sourceName, derivedOp, beforeNames, copy));
+        } catch (IOException e) {
+            logger.warn("Could not write run info for '{}': {}", copyName, e.getMessage());
+        }
+    }
+
+    private static String buildEditInfo(String copyName, String sourceName, String derivedOp,
+                                        Map<Integer, String> beforeNames,
+                                        SavedClusteringResult copy) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("QP-CAT cluster edit\n");
+        sb.append("===================\n\n");
+        sb.append("Result name : ").append(copyName).append('\n');
+        sb.append("Derived     : ").append(derivedOp != null ? derivedOp : "edit")
+                .append(" of '").append(sourceName).append("'\n");
+        String ext = GeneralTools.getPackageVersion(ClusteringRunRecord.class);
+        sb.append("QP-CAT      : ").append(ext != null ? ext : "(unknown)").append('\n');
+        sb.append("QuPath      : ").append(GeneralTools.getVersion()).append("\n\n");
+
+        sb.append("What changed\n");
+        sb.append("------------\n");
+        sb.append("An edit changes NAMES only. The per-cell cluster labels are identical to\n");
+        sb.append("'").append(sourceName).append("', which is why the edit is reversible.\n\n");
+
+        Set<Integer> labels = new TreeSet<>();
+        int[] raw = copy.getClusterLabels();
+        if (raw != null) {
+            for (int lab : raw) {
+                if (lab >= 0) labels.add(lab);
+            }
+        }
+        boolean any = false;
+        for (int lab : labels) {
+            String before = beforeNames != null ? beforeNames.get(lab) : null;
+            if (before == null) before = "Cluster " + lab;
+            String after = copy.displayNameForLabel(lab);
+            if (Objects.equals(before, after)) continue;
+            any = true;
+            sb.append(String.format("  Cluster %-4d %s  ->  %s%n", lab, quote(before), quote(after)));
+        }
+        if (!any) {
+            sb.append("  (no name differs from the parent)\n");
+        }
+
+        // Which names now cover more than one cluster -- the merges, stated as
+        // groups rather than left to be inferred from the per-label lines.
+        Map<String, List<Integer>> byName = new LinkedHashMap<>();
+        for (int lab : labels) {
+            byName.computeIfAbsent(copy.displayNameForLabel(lab), n -> new ArrayList<>()).add(lab);
+        }
+        List<Map.Entry<String, List<Integer>>> groups = new ArrayList<>();
+        for (Map.Entry<String, List<Integer>> e : byName.entrySet()) {
+            if (e.getValue().size() > 1) groups.add(e);
+        }
+        if (!groups.isEmpty()) {
+            sb.append("\nMerged groups (one name over several clusters)\n");
+            sb.append("---------------------------------------------\n");
+            for (Map.Entry<String, List<Integer>> e : groups) {
+                sb.append("  ").append(quote(e.getKey())).append("  =  ");
+                for (int i = 0; i < e.getValue().size(); i++) {
+                    if (i > 0) sb.append(", ");
+                    sb.append("Cluster ").append(e.getValue().get(i));
+                }
+                sb.append('\n');
+            }
+        }
+
+        sb.append("\nUndoing this edit\n");
+        sb.append("-----------------\n");
+        sb.append("Both results are on disk; neither is deleted by an edit.\n\n");
+        sb.append("  Extensions > QP-CAT > Results & populations >\n");
+        sb.append("  Modify cell populations (rename, merge, split, sub-cluster)...\n");
+        sb.append("    -> select '").append(copyName).append("'\n");
+        sb.append("    -> Step back to '").append(sourceName).append("'\n\n");
+        sb.append("To split a merge apart without discarding the rest of this edit, select\n");
+        sb.append("the merged cluster and use Split... instead of stepping back.\n\n");
+        sb.append("The parent's full run record is '").append(sourceName)
+                .append("_RUN_INFO.txt' in this\nfolder; the config beside this result is a copy of the parent's.\n");
+        return sb.toString();
+    }
+
+    private static String quote(String s) {
+        return "'" + s + "'";
+    }
+
     private static String buildRunInfo(String savedName, ClusteringConfig config,
                                        ClusteringResult result, String scopeLabel) {
         String ext = GeneralTools.getPackageVersion(ClusteringRunRecord.class);
@@ -90,6 +214,13 @@ public final class ClusteringRunRecord {
             for (String w : result.getQualityWarnings()) {
                 sb.append("WARNING     : ").append(w).append('\n');
             }
+        }
+        if (result != null && result.getDerivedOp() != null) {
+            sb.append("Derived     : ").append(result.getDerivedOp());
+            if (result.getDerivedFrom() != null && !result.getDerivedFrom().isBlank()) {
+                sb.append("  of '").append(result.getDerivedFrom()).append('\'');
+            }
+            sb.append('\n');
         }
         sb.append("QP-CAT      : ").append(ext != null ? ext : "(unknown)").append('\n');
         sb.append("QuPath      : ").append(GeneralTools.getVersion()).append("\n\n");
@@ -185,6 +316,42 @@ public final class ClusteringRunRecord {
             return sb.toString();
         }
 
+        String subParent = result != null ? result.getSubclusterParentClass() : null;
+        if (subParent != null && !subParent.isBlank()) {
+            String parentResult = result.getDerivedFrom();
+            sb.append("How to reproduce this run\n");
+            sb.append("-------------------------\n");
+            sb.append("This is a SUB-CLUSTER run: only the cells classified as '")
+                    .append(subParent).append("'\n");
+            sb.append("were re-clustered, into '").append(subParent).append(".0', '")
+                    .append(subParent).append(".1', ...\n\n");
+            if (parentResult != null && !parentResult.isBlank()) {
+                sb.append("Parent result : ").append(parentResult).append('\n');
+                sb.append("Parent class  : ").append(subParent).append("\n\n");
+                sb.append("The parent's own record is '").append(parentResult)
+                        .append("_RUN_INFO.txt' in this folder.\n");
+                sb.append("Re-applying the parent restores '").append(subParent)
+                        .append("' over these sub-labels\n");
+                sb.append("(Modify cell populations... -> select '").append(parentResult)
+                        .append("' -> Put this version\n on the cells).\n\n");
+            } else {
+                sb.append("Parent class  : ").append(subParent).append('\n');
+                sb.append("Parent result : (not recorded -- this run was not launched from a\n");
+                sb.append("                saved result, so there is nothing to step back to)\n\n");
+            }
+            sb.append("1. Re-open the result (no recompute):\n");
+            sb.append("   Extensions > QP-CAT > View Past Results... -> '")
+                    .append(savedName).append("'\n\n");
+            sb.append("2. Re-run from a script. Requires the cells to still carry '")
+                    .append(subParent).append("',\n");
+            sb.append("   so run it on the parent's labels, not on top of these sub-labels:\n\n");
+            sb.append(subclusterScript(savedName, subParent, parentResult, config));
+            sb.append('\n');
+            sb.append("   Sub-clustering is not expressible in the YAML headless batch; the\n");
+            sb.append("   script above is the headless route.\n\n");
+            return sb.toString();
+        }
+
         sb.append("How to reproduce this run\n");
         sb.append("-------------------------\n");
         sb.append("1. Re-open the result (no recompute):\n");
@@ -208,6 +375,64 @@ public final class ClusteringRunRecord {
         sb.append("when the original was multi-image, producing different labels. Reproduce\n");
         sb.append("deliberately via routes 1-3 above; for servers use route 3 (YAML batch).\n");
         return sb.toString();
+    }
+
+    /**
+     * A runnable Groovy re-run of a sub-cluster, for the run record.
+     *
+     * <p>Loads the config sidecar written beside this result rather than restating
+     * the parameters, so the script cannot drift from what actually ran. The
+     * project-wide form is included commented out because the two differ only in
+     * scope, and picking the wrong one silently sub-clusters one image when the
+     * original covered several.
+     *
+     * @param savedName    this result's base name; its {@code _config.json} sidecar
+     * @param parentClass  the class that was sub-clustered
+     * @param parentResult the saved result the class came from, or null
+     * @param config       the run's config, used only to pick the scope shown first
+     * @return an indented Groovy snippet
+     */
+    private static String subclusterScript(String savedName, String parentClass,
+                                           String parentResult, ClusteringConfig config) {
+        String parentArg = (parentResult != null && !parentResult.isBlank())
+                ? "\"" + parentResult + "\"" : "null";
+        boolean projectWide = config != null && config.isClusterEntireProject();
+        StringBuilder g = new StringBuilder();
+        g.append("   import qupath.ext.qpcat.controller.ClusteringWorkflow\n");
+        g.append("   import qupath.ext.qpcat.service.ClusteringConfigManager\n");
+        g.append("   import qupath.ext.qpcat.service.ClusteringResultManager\n");
+        g.append("   import qupath.lib.gui.QuPathGUI\n\n");
+        g.append("   def qupath = QuPathGUI.getInstance()\n");
+        g.append("   def dir = ClusteringResultManager.getResultsDirectory(qupath.getProject())\n");
+        g.append("   def config = ClusteringConfigManager.loadConfigFromFile(\n");
+        g.append("           dir.resolve(\"").append(savedName).append("_config.json\"))\n");
+        g.append("   def workflow = new ClusteringWorkflow(qupath)\n\n");
+        String single = "   def result = workflow.runSubclustering(\n"
+                + "           \"" + parentClass + "\", " + parentArg + ", config, { println it })\n";
+        String project = "   def entries = qupath.getProject().getImageList()\n"
+                + "   def result = workflow.runProjectSubclustering(\n"
+                + "           \"" + parentClass + "\", entries, " + parentArg
+                + ", config, { println it })\n";
+        if (projectWide) {
+            g.append("   // This run covered project images:\n").append(project);
+            g.append("\n   // Current image only:\n").append(comment(single));
+        } else {
+            g.append("   // This run covered the current image only:\n").append(single);
+            g.append("\n   // Across project images:\n").append(comment(project));
+        }
+        return g.toString();
+    }
+
+    /** Comment out every line of a snippet, keeping its indent. */
+    private static String comment(String snippet) {
+        StringBuilder out = new StringBuilder();
+        for (String line : snippet.split("\n", -1)) {
+            if (line.isBlank()) continue;
+            // Keep the original indent so an uncommented block still reads as code.
+            out.append("   // ").append(line.startsWith("   ") ? line.substring(3) : line)
+                    .append('\n');
+        }
+        return out.toString();
     }
 
     /**

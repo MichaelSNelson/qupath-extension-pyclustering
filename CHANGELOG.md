@@ -16,6 +16,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); QP-
   merge from being a one-way door. Works on a staged merge and on one applied in an earlier
   session. Requested by @mikemcka (#18).
 
+- **Sub-cluster results now record their parent run**, not just the parent class in a free-text
+  scope label. `derivedFrom` points at the saved result whose cluster was split and the class is
+  stored as its own field, so the chain is navigable and **Step back** works on a sub-cluster --
+  re-applying the parent restores `Cluster 1` over `Cluster 1.0 ... N`.
+- **`RUN_INFO.txt` for a sub-cluster carries a runnable Groovy script.** The generic "reproduce
+  this run" steps were a false promise there: loading the config and re-running would re-cluster
+  everything, not the one class. The record now names the parent result and class and emits a
+  script that calls the sub-cluster entry point directly, loading the config sidecar so it cannot
+  drift from what ran. Sub-clustering is not expressible in the YAML batch, so this is the
+  headless route.
+- **A rename/merge/split copy gets a record too.** Previously only auto-saved runs got sidecars,
+  so an edit landed on disk with none and the only way to see what it did was to diff two JSON
+  files. The copy now inherits the parent's `_config.json` (the labels are unchanged, so it still
+  describes them) and gets a `_RUN_INFO.txt` listing every name that changed, the names now
+  covering more than one cluster, and how to undo it.
+
 ### Fixed
 
 - **Lineage set on a result now survives being saved.** `SavedClusteringResult.fromResult`
