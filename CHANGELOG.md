@@ -40,6 +40,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); QP-
   runs off the UI thread with the status row live rather than freezing the dialog on the Run
   click.
 
+- **Step back is live after a merge or rename.** Applying an edit refreshed the saved-result
+  list but never selected the copy it had just written, so the dialog stayed pointed at the
+  PARENT -- whose own Step back is correctly disabled, because a parent has no parent. The edit
+  looked un-undoable the moment it was made. The chooser now retargets the copy, as the
+  "Put this version on the cells" path already did.
+- **The Cluster Explainer showed the same warning twice**, once in the panel's banner and once
+  in the tab's guide bar. The banner keeps the warning; the guide bar keeps only what it
+  uniquely says.
+- **"Choose images manually" is hidden rather than greyed out** when a saved result exists. The
+  two paths are mutually exclusive by construction -- the manual one unlocks solely when there
+  is no saved result -- so the dialog was spending about a quarter of its height on a control
+  that could never be clicked, and a radio pair with one dead option reads as a choice the user
+  is failing to understand rather than an absent alternative.
+
 ### Fixed
 
 - **Lineage set on a result now survives being saved.** `SavedClusteringResult.fromResult`

@@ -165,10 +165,11 @@ public class ClusterExplainerPanel {
     /** Prominent banner: this LLM-based feature is experimental and unvalidated. */
     private Node buildUntestedBanner() {
         Label warn = new Label(
-                "EXPERIMENTAL / UNTESTED: the Cluster Explainer uses an LLM to suggest "
-                + "cluster identities and has not been validated. Treat every suggestion as "
-                + "an unverified hint, not a conclusion -- always confirm it against the "
-                + "marker evidence yourself before relying on it.");
+                "EXPERIMENTAL / UNTESTED: the Cluster Explainer has never been run "
+                + "end-to-end by the QP-CAT developers -- treat it as unproven, not "
+                + "merely unvalidated. Every suggestion is an unverified hint, not a "
+                + "conclusion: confirm it against the Marker Rankings tab and your own "
+                + "domain knowledge before relying on it.");
         warn.setWrapText(true);
         warn.setMaxWidth(Double.MAX_VALUE);
         warn.setStyle("-fx-background-color: #fff3cd; -fx-text-fill: #7a5b00; "

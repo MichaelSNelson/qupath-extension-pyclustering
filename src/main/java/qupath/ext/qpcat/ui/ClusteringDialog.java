@@ -3551,14 +3551,15 @@ public class ClusteringDialog {
                     new ClusterExplainerPanel(result, loadedResultName);
             Tab tab = new Tab("Cluster Explainer (LLM) [Experimental]",
                     wrapWithGuide(explainerPanel.build(),
-                    "EXPERIMENTAL -- this feature has never been successfully run "
-                    + "end-to-end by the QP-CAT developers. Treat it as unproven, not "
-                    + "merely unvalidated.\n"
-                    + "It asks a remote or local LLM to suggest cell-type names for each "
-                    + "cluster from its top markers. Any suggestion is a starting point -- "
-                    + "check it against the Marker Rankings tab and your own domain "
-                    + "knowledge. The API key is held in memory only; you re-enter it "
-                    + "each QuPath session, or set QPCAT_ANTHROPIC_KEY in your shell.",
+                    // The experimental warning lives in the panel's own banner, which
+                    // is more prominent and travels with the panel. Repeating it here
+                    // put two near-identical warnings one above the other, which reads
+                    // as a UI mistake and makes both easier to skip. This bar keeps
+                    // only what it uniquely offers.
+                    "Asks a remote or local LLM to suggest cell-type names for each "
+                    + "cluster from its top markers. The API key is held in memory only; "
+                    + "re-enter it each QuPath session, or set QPCAT_ANTHROPIC_KEY in "
+                    + "your shell.",
                     "cluster-explainer-llm-tab"));
             tab.setClosable(false);
             tabPane.getTabs().add(tab);

@@ -205,17 +205,19 @@ public class ClusterManagementDialog {
             } else {
                 resultChooser.getSelectionModel().selectFirst();
             }
-            manualHint.setText("A saved result records exactly which cells the run labelled, "
-                    + "so the rename/merge reaches all of them and writes a safe copy. "
-                    + "The manual option is disabled while saved results exist.");
+            manualHint.setText("The result records exactly which cells the run labelled, so an "
+                    + "edit reaches all of them, across every image that run covered, and is "
+                    + "written as a new copy leaving the original untouched.");
         } else {
             manualRadio.setSelected(true);
             savedResultRadio.setDisable(true);
             savedResultRadio.setText("Use a saved clustering result (none found)");
-            manualHint.setText("No saved clustering results were found in this project, so the "
-                    + "manual path is enabled. It relabels detections by their current class "
-                    + "name. Tip: tick \"Save as a new saved result\" to create a reusable "
-                    + "result, then future edits can target it directly.");
+            manualHint.setText("No saved clustering result was found in this project, so there "
+                    + "is nothing to edit yet. This path relabels detections by their CURRENT "
+                    + "class name instead -- use it to tidy up hand-drawn or imported "
+                    + "classifications. Tick \"Save as a new saved result\" to turn them into a "
+                    + "result, after which edits target that result directly and reach exactly "
+                    + "the cells it covers.");
         }
 
         VBox savedBox = new VBox(4, resultChooser);
@@ -226,11 +228,23 @@ public class ClusterManagementDialog {
         savedBox.disableProperty().bind(savedResultRadio.selectedProperty().not());
         manualBox.disableProperty().bind(manualRadio.selectedProperty().not());
 
-        VBox scopeBox = new VBox(6,
-                new Label("Apply changes to:"),
-                savedResultRadio, savedBox,
-                manualRadio, manualBox,
-                manualHint);
+        // Show ONLY the path that applies. The two are mutually exclusive by
+        // construction -- the manual path unlocks solely when there is no saved
+        // result -- so rendering both and disabling one spent about a quarter of
+        // the dialog on a control that could never be clicked. A radio pair with
+        // one permanently dead option also reads as a choice the user is failing
+        // to understand, rather than as an absent alternative.
+        VBox scopeBox;
+        if (hasSaved) {
+            // The result IS the scope; the label states it rather than offering it.
+            Label scopeHeading = new Label("Editing the saved result:");
+            savedBox.setPadding(new Insets(0));
+            scopeBox = new VBox(6, scopeHeading, savedBox, manualHint);
+        } else {
+            Label scopeHeading = new Label("Apply changes to:");
+            manualBox.setPadding(new Insets(0));
+            scopeBox = new VBox(6, scopeHeading, manualBox, manualHint);
+        }
         scopeBox.setPadding(new Insets(0, 0, 6, 0));
 
         // --- Cluster list + edit buttons -----------------------------------
@@ -894,9 +908,20 @@ public class ClusterManagementDialog {
             Platform.runLater(() -> {
                 setBusy(false, "");
                 showApplyReport(report, "Saved copy: '" + fWritten + "'.");
-                // Refresh the chooser so the new copy is listed and selectable.
+                // Refresh the chooser AND retarget it at the copy, the way
+                // applyVersionToCells does. Listing it without selecting it left the
+                // dialog pointed at the PARENT, whose own Step back is correctly
+                // disabled because it has no parent -- so an edit that had just been
+                // written looked un-undoable. The cells now carry the copy; the
+                // dialog has to be looking at the same thing they do.
                 try {
                     resultChooser.getItems().setAll(ClusteringResultManager.listResultEntries(project));
+                    for (ClusteringResultManager.ResultEntry en : resultChooser.getItems()) {
+                        if (en != null && en.name.equals(fWritten)) {
+                            resultChooser.getSelectionModel().select(en);
+                            break;
+                        }
+                    }
                 } catch (Exception listEx) {
                     logger.warn("Could not refresh saved-result list: {}", listEx.getMessage());
                 }
