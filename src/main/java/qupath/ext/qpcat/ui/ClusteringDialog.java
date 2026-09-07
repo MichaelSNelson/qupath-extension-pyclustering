@@ -91,6 +91,9 @@ public class ClusteringDialog {
     // parent instead of naming the class in free text. Null when sub-clustering
     // was not launched from a saved result.
     private final String subclusterSourceResult;
+    // Per-image counts of the parent class, gathered off the FX thread before the
+    // confirmation prompt. Consumed once, so a later Run counts afresh.
+    private Map<ProjectImageEntry<BufferedImage>, Integer> pendingSubclusterCounts;
 
     // UI components
     // Reusable 3-way image-scope control (current / all / specific subset).
@@ -263,9 +266,20 @@ public class ClusteringDialog {
         // than every cell.
         Node scopeNode = createScopeSection();
         if (subcluster) {
+            // Project-wide by DEFAULT here, unlike a normal run. Sub-clustering one
+            // image at a time gives each image its own '.0' derived from its own
+            // cells, so the sub-labels share a name without being the same
+            // population -- the failure is silent, and the parent run these cells
+            // came from was almost always project-wide itself.
+            boolean pooled = scopeSection.preferAllImages();
             scopeSection.setScopeTooltip("Cells classified as '" + subclusterParentClass
                     + "' in each selected image are pooled and re-clustered into '"
-                    + subclusterParentClass + ".N' sub-labels.");
+                    + subclusterParentClass + ".N' sub-labels."
+                    + (pooled
+                        ? "  All project images is the default: one pooled run makes '"
+                          + subclusterParentClass + ".0' mean the same population in every "
+                          + "image, which per-image runs cannot."
+                        : ""));
         }
 
         // Settings live in their own box so the whole group can be disabled
@@ -2412,6 +2426,66 @@ public class ClusteringDialog {
      * For the current image the count is cheap and worth showing, because
      * "1,203 of 45,000" reads very differently from "45,000 of 45,000".
      */
+    /** True when a sub-cluster run needs scope-wide counts it does not yet hold. */
+    private boolean needsSubclusterCount(List<ProjectImageEntry<BufferedImage>> subsetEntries) {
+        if (subclusterParentClass == null || pendingSubclusterCounts != null) {
+            return false;
+        }
+        return scopeSection.isAllImages() || subsetEntries != null;
+    }
+
+    /**
+     * Count the parent class across the scope off the FX thread, then re-enter
+     * {@link #runClustering()} with the counts in hand.
+     *
+     * <p>Re-entering rather than restructuring the run: everything before the
+     * confirmation only reads UI state, so running it twice costs nothing and
+     * leaves the long, heavily-used clustering path untouched.
+     */
+    private void countSubclusterCellsThenRerun(
+            List<ProjectImageEntry<BufferedImage>> subsetEntries) {
+        Project<BufferedImage> project = qupath.getProject();
+        List<ProjectImageEntry<BufferedImage>> entries = (subsetEntries != null)
+                ? subsetEntries
+                : (project != null ? project.getImageList() : List.<ProjectImageEntry<BufferedImage>>of());
+
+        runButton.setDisable(true);
+        progressBar.setProgress(-1);
+        progressBar.setVisible(true);
+        statusLabel.setText("Counting '" + subclusterParentClass + "' cells in "
+                + entries.size() + " image(s)...");
+
+        Thread t = new Thread(() -> {
+            Map<ProjectImageEntry<BufferedImage>, Integer> counts;
+            try {
+                counts = new ClusteringWorkflow(qupath)
+                        .countCellsWithClass(entries, subclusterParentClass);
+            } catch (Exception e) {
+                // Restore the dialog rather than leaving Run disabled forever with
+                // a spinner that never stops.
+                logger.error("Could not count '{}' cells", subclusterParentClass, e);
+                Platform.runLater(() -> {
+                    runButton.setDisable(false);
+                    progressBar.setVisible(false);
+                    statusLabel.setText("");
+                    Dialogs.showErrorNotification("QPCAT",
+                            "Could not count cells classified as '" + subclusterParentClass
+                            + "': " + e.getMessage());
+                });
+                return;
+            }
+            Platform.runLater(() -> {
+                runButton.setDisable(false);
+                progressBar.setVisible(false);
+                statusLabel.setText("");
+                pendingSubclusterCounts = counts;
+                runClustering();
+            });
+        }, "QPCAT-SubclusterCount");
+        t.setDaemon(true);
+        t.start();
+    }
+
     private boolean confirmClassificationOverwrite(
             List<ProjectImageEntry<BufferedImage>> subsetEntries) {
         boolean projectScope = scopeSection.isAllImages() || subsetEntries != null;
@@ -2428,8 +2502,12 @@ public class ClusteringDialog {
                 List<ProjectImageEntry<BufferedImage>> entries = (subsetEntries != null)
                         ? subsetEntries
                         : (project != null ? project.getImageList() : List.of());
-                var counts = new ClusteringWorkflow(qupath)
-                        .countCellsWithClass(entries, subclusterParentClass);
+                var counts = pendingSubclusterCounts != null
+                        ? pendingSubclusterCounts
+                        : new ClusteringWorkflow(qupath)
+                                .countCellsWithClass(entries, subclusterParentClass);
+                // Consumed either way: a later Run must see today's counts, not these.
+                pendingSubclusterCounts = null;
                 if (counts.isEmpty()) {
                     Dialogs.showWarningNotification("QPCAT",
                             "No cells classified as '" + subclusterParentClass
@@ -2539,6 +2617,15 @@ public class ClusteringDialog {
         // cells -- a previous clustering run, phenotyping, a hand-drawn
         // classifier -- is overwritten. Mirrors the same confirmation the
         // phenotyping dialog has always shown, which clustering lacked.
+        // The sub-cluster confirmation reports real per-image counts, which means
+        // opening every image in scope. Project scope is now the DEFAULT for a
+        // sub-cluster, so doing that inline would freeze the dialog on every Run
+        // click with nothing on screen saying why.
+        if (needsSubclusterCount(subsetEntries)) {
+            countSubclusterCellsThenRerun(subsetEntries);
+            return;
+        }
+
         if (!confirmClassificationOverwrite(subsetEntries)) {
             return;
         }

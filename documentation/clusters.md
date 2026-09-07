@@ -223,10 +223,13 @@ This is the answer to under-clustering when raising the resolution globally woul
 everything else: cluster on lineage markers first, then sub-cluster one lineage on its functional
 markers.
 
-- **Scope works as it does for a normal run.** *Current image* re-clusters the open image only.
-  *All* / *Specific images* pools that class's cells across the selected images and clusters them
-  **together in one run**, so `.0` means the same thing in every image -- and writes the labels
-  back to each. Images with no cells of that class are skipped.
+- **Scope defaults to All project images**, unlike a normal run, which starts on the current
+  image. Sub-clustering one image at a time gives each image its own `.0` derived from its own
+  cells, so the sub-labels share a name without being the same population -- and nothing about
+  the result says so. Pooling the class's cells across the selected images and clustering them
+  **together in one run** makes `.0` mean the same thing everywhere; the labels are then written
+  back to each image, and images with no cells of that class are skipped. *Current image* is
+  still there when you want it.
 - **It reads the class off the cells**, not the staged list. If you have renamed clusters but not
   yet applied them, use *Put this version on the cells* first.
 - **Confirm carefully on a project-wide run.** Matching is by class **name**, so the confirmation

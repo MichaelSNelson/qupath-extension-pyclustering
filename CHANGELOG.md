@@ -32,6 +32,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); QP-
   describes them) and gets a `_RUN_INFO.txt` listing every name that changed, the names now
   covering more than one cluster, and how to undo it.
 
+- **Sub-clustering now defaults to All project images.** It used the shared scope picker but
+  inherited its "current image" default, so the common case silently produced per-image
+  sub-labels: each image gets its own `.0` from its own cells, sharing a name without being the
+  same population. The pooled run was always available; it just was not what you got by default.
+  Counting the parent class for the confirmation prompt opens every image in scope, so that now
+  runs off the UI thread with the status row live rather than freezing the dialog on the Run
+  click.
+
 ### Fixed
 
 - **Lineage set on a result now survives being saved.** `SavedClusteringResult.fromResult`

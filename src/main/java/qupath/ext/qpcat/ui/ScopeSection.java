@@ -189,6 +189,28 @@ public final class ScopeSection extends VBox {
      * images" and "Specific images..."), e.g. to describe how cross-image runs
      * pool and write back.
      */
+    /**
+     * Start on "All project images" when that scope is available.
+     *
+     * <p>For a caller whose natural default is the whole project rather than the
+     * open image. Sub-clustering is the case: running it per image gives each
+     * image its own '.0', '.1', ... derived from that image's cells alone, so the
+     * sub-labels are not comparable across images even though they share a name.
+     * One pooled run makes '.0' mean the same thing everywhere.
+     *
+     * <p>Falls back to the constructor's choice when the project has fewer than
+     * two images, so it is safe to call unconditionally.
+     *
+     * @return true when the scope was actually changed to all images
+     */
+    public boolean preferAllImages() {
+        if (allImagesUnavailable) {
+            return false;
+        }
+        scopeAllImages.setSelected(true);
+        return true;
+    }
+
     public void setScopeTooltip(String text) {
         Tooltip tip = Tooltips.of(text);
         // Never overwrite the "why is this disabled" tooltip with a description
