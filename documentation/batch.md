@@ -24,6 +24,7 @@ The YAML headless batch is the reproducibility backbone of a QP-CAT-driven paper
 | Paper figure regeneration (after revision asks) | YAML batch with `clustering.mode: reuse_saved` |
 | Nightly CI regression run | YAML batch |
 | Power-user custom Groovy that doesn't fit the YAML schema | Direct Groovy scripting -- see [Scripting](scripting.md) |
+| Sub-cluster one population into sub-types | Groovy script from the run record (not expressible in YAML) |
 
 Two rules of thumb: **if you will run this analysis more than twice, write a YAML** -- the
 breakeven is low because the YAML doubles as documentation. And **if the analysis appears in

@@ -98,6 +98,8 @@ The `images` field is a union:
 
 When `clustering` is omitted entirely, the batch skips clustering and expects every image to already have a saved result (for spatial-stats-only or figure-export-only runs).
 
+**Sub-clustering is not available in the batch** -- it re-clusters only a single population and is not expressible as a top-level scope. To reproduce a sub-clustering run headless, copy the Groovy script from the sub-cluster's `_RUN_INFO.txt` file; see [Reproducibility](reproducibility.md#run-it-headless).
+
 | Key | Type | Default | Notes |
 |---|---|---|---|
 | `type` (alias `algorithm`) | string | -- (required unless `mode: reuse_saved`) | One of `leiden`, `kmeans`, `hdbscan`, `agglomerative`, `minibatch_kmeans`, `gmm`, `banksy`, `none`, `skip`. Case-insensitive. `louvain` is accepted but runs **Leiden** (logged as a warning). An unrecognised value is an error -- it is no longer silently run as Leiden. |

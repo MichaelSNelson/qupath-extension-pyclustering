@@ -35,6 +35,11 @@ Translate the parameters in `RUN_INFO.txt` into a batch YAML and run `qpcat_batc
 See [Batch runs](batch.md) and the [YAML reference](yaml-reference.md). This is the route
 for a server, CI, or many projects.
 
+For a **sub-cluster**, skip the YAML step: sub-clustering is not expressible in the batch.
+Instead, copy the Groovy script from the `_RUN_INFO.txt` file and run it in QuPath's
+Script Editor. It calls the sub-clustering entry point directly, loads the config sidecar,
+and requires the parent class still to be on the cells.
+
 ### What the Workflow tab does here
 
 QuPath records each command in its **Workflow** tab, and QP-CAT adds a step to every image
