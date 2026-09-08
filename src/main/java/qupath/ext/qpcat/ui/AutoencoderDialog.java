@@ -13,6 +13,7 @@ import javafx.scene.control.cell.CheckBoxListCell;
 import org.controlsfx.control.CheckComboBox;
 import javafx.scene.layout.*;
 import javafx.stage.Modality;
+import javafx.animation.PauseTransition;
 import javafx.stage.Stage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,6 +50,21 @@ public class AutoencoderDialog {
 
     private final QuPathGUI qupath;
     private final Stage owner;
+
+    // Class-distribution scan. Five controls trigger it, it walks every
+    // detection in each checked image, and for project scope it reads those
+    // images from disk - so a burst of clicks used to start a burst of threads,
+    // each re-reading the project, with no cancellation and no ordering
+    // guarantee on which one painted the chart last. Requests now coalesce
+    // through a debounce onto one executor, and a generation counter drops a
+    // superseded result rather than letting it overwrite a newer one.
+    private static final long CLASS_DIST_DEBOUNCE_MS = 300;
+    private final PauseTransition classDistDebounce =
+            new PauseTransition(javafx.util.Duration.millis(CLASS_DIST_DEBOUNCE_MS));
+    private final java.util.concurrent.atomic.AtomicLong classDistGeneration =
+            new java.util.concurrent.atomic.AtomicLong();
+    private java.util.concurrent.ExecutorService classDistExecutor;
+    private volatile boolean dialogShowing;
 
     /** True while a training / apply / eval task is running. Parameter
      *  controls (spinners, checkboxes, radios, combos) lock themselves
@@ -197,6 +213,25 @@ public class AutoencoderDialog {
         if (measurementCombo != null) {
             measurementCombo.disableProperty().bind(trainingInProgress);
         }
+
+        dialogShowing = true;
+        classDistDebounce.setOnFinished(e -> runClassDistributionScan());
+        classDistExecutor = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r, "QPCAT-ClassDistScan");
+            t.setDaemon(true);
+            return t;
+        });
+        dialog.setOnHidden(e -> {
+            dialogShowing = false;
+            classDistDebounce.stop();
+            // Bump the generation so an in-flight scan discards its result
+            // instead of touching a chart on a closed dialog.
+            classDistGeneration.incrementAndGet();
+            if (classDistExecutor != null) {
+                classDistExecutor.shutdownNow();
+                classDistExecutor = null;
+            }
+        });
 
         // Initial refresh
         Platform.runLater(this::refreshClassDistribution);
@@ -905,7 +940,19 @@ public class AutoencoderDialog {
      * Scans all checked images for class distribution. Runs image loading
      * on a background thread to avoid blocking the FX thread.
      */
+    /**
+     * Ask for the class-distribution chart to be refreshed. Safe to call from
+     * any listener: requests inside the debounce window collapse into a single
+     * scan, so ticking three boxes costs one pass over the project, not three.
+     */
     private void refreshClassDistribution() {
+        // Invalidate here as well as at submit time, so a scan already running
+        // cannot repaint the chart after a newer request has been made.
+        classDistGeneration.incrementAndGet();
+        classDistDebounce.playFromStart();
+    }
+
+    private void runClassDistributionScan() {
         if (classDistributionChart == null || labelSummaryLabel == null) return;
 
         boolean cellsOnly = cellsOnlyRadio != null && cellsOnlyRadio.isSelected();
@@ -930,8 +977,13 @@ public class AutoencoderDialog {
 
         labelSummaryLabel.setText("Scanning " + checkedEntries.size() + " image(s)...");
 
-        // Run image scanning on background thread
-        Thread scanThread = new Thread(() -> {
+        final long generation = classDistGeneration.incrementAndGet();
+        java.util.concurrent.ExecutorService executor = classDistExecutor;
+        if (executor == null || executor.isShutdown()) {
+            return;
+        }
+        // Run image scanning on a background thread
+        executor.submit(() -> {
             Map<String, Integer> classCounts = new LinkedHashMap<>();
             Map<String, Integer> classColors = new LinkedHashMap<>();
             int totalCells = 0;
@@ -1043,11 +1095,13 @@ public class AutoencoderDialog {
             final int fTotalCells = totalCells;
             final int fTotalLabeled = totalLabeled;
             final int fNImages = nImages;
-            Platform.runLater(() ->
-                    updateChartUI(classCounts, classColors, fTotalCells, fTotalLabeled, fNImages, cellsOnly));
-        }, "QPCAT-ClassDistScan");
-        scanThread.setDaemon(true);
-        scanThread.start();
+            Platform.runLater(() -> {
+                if (generation != classDistGeneration.get() || !dialogShowing) {
+                    return;
+                }
+                updateChartUI(classCounts, classColors, fTotalCells, fTotalLabeled, fNImages, cellsOnly);
+            });
+        });
     }
 
     private void updateChartUI(Map<String, Integer> classCounts, Map<String, Integer> classColors,
