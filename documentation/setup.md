@@ -90,6 +90,38 @@ and `pixi.lock`, then relaunch. Add `%USERPROFILE%\.local\share\appose\` as an
 antivirus exclusion if it recurs. Reboot if deleting still fails -- that releases every
 handle.
 
+**Windows `DLL load failed ... %1 is not a valid Win32 application`** (reported against
+`_igraph`, but the same applies to any module). Windows raises this when a binary in the
+load chain is not a valid 64-bit `.dll`/`.pyd` -- truncated, empty, or the wrong
+architecture. It names the module you imported, **not the file that is actually broken**:
+`_igraph.pyd` itself is usually fine and one of the DLLs it depends on
+(`igraph.dll`, and in turn `glpk`, `gmp`, `libxml2`, BLAS/LAPACK, the MSVC runtime) is
+the bad one. Checking only the `.pyd` will tell you it is 64-bit and healthy.
+
+Find the real culprit by scanning every binary in the environment:
+
+```
+"%USERPROFILE%\.local\share\appose\qupath-qpcat\.pixi\envs\default\python.exe" tools\qpcat_check_dlls.py
+```
+
+(`tools/qpcat_check_dlls.py` is in the QP-CAT repository; it uses only the standard
+library.) It prints any file that is empty, truncated, or not x64.
+
+If it finds something, **clear the package cache as well as the environment.** The
+environment is rebuilt from cached downloads, so deleting only `.pixi` re-extracts the
+same corrupt bytes and the failure returns unchanged:
+
+1. Close QuPath; kill any leftover `java.exe` / `python.exe`.
+2. Delete `%USERPROFILE%\.local\share\appose\qupath-qpcat\`.
+3. Delete the pixi/rattler package cache -- `%LOCALAPPDATA%\rattler` by default, or
+   whatever `PIXI_CACHE_DIR` / `RATTLER_CACHE_DIR` is set to.
+4. Add `%USERPROFILE%\.local\share\appose\` as an antivirus exclusion. Real-time
+   scanners truncating or quarantining a DLL mid-extract is a common cause.
+5. Relaunch and run **Setup & help > Rebuild analysis environment**.
+
+If the scan reports no problems, the environment is intact and the cause is elsewhere --
+send the scan output with your report.
+
 **Stale `pkg_resources` / `xarray_schema` import on launch** is a different failure.
 QP-CAT detects it, wipes the environment and asks you to restart; the second launch
 rebuilds.

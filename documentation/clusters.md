@@ -5,6 +5,7 @@ or push it onto another image's detections.
 
 - [Judging a result](#judging-a-result)
 - [Modifying clusters: rename, merge, split, sub-cluster](#modifying-clusters)
+- [The two editing paths, and which one you get](#the-two-paths-and-which-one-you-get)
 - [Sub-clustering](#sub-clustering-cluster-within-a-cluster)
 - [Gating cells on a 2D plot](#gating-cells-on-a-2d-plot)
 - [Applying a saved result to detections](#applying-a-saved-result-to-detections)
@@ -201,17 +202,28 @@ Three things worth knowing:
   shows which results are parents of others precisely so you can see what a deletion would
   cost.
 
-### If you have no saved result (manual fallback)
+### The two paths, and which one you get
 
-The **Choose images manually** option is **disabled whenever a saved result exists** -- the
-saved-result path above is safer and reaches exactly the right cells. It unlocks only when no
-saved-result JSON is found in the project. In that case it relabels detections by their
-current class name across the image scope you choose (Current image / All / Specific images),
-and offers **Save the result as a new saved result** so you can bootstrap a reusable result
-and target it directly next time.
+The dialog has two ways of finding the cells to relabel. **You do not choose between them --
+the dialog shows whichever applies**, because they are mutually exclusive: the manual path
+exists only for the case the saved-result path cannot serve.
 
-> Tip: if Manage Clusters offers only the manual path, run a clustering analysis first (QP-CAT
-> auto-saves each run), then reopen this dialog -- the saved-result path will be available.
+**Editing a saved result** (what you get whenever the project has one). The result records
+each labelled cell by source image id and centroid, so an edit reaches exactly the cells that
+run labelled, across every image it covered, and no others. It is written as a new copy, so
+the original is never touched and you can step back. This is why it is preferred: correctness
+comes from the recorded cell list, not from matching on a name.
+
+**Choosing images manually** (only when the project has no saved result at all). There is no
+recorded cell list to work from, so this path matches on the **current class name** instead
+and relabels every detection carrying it in the images you pick. That is a weaker guarantee:
+anything sharing the name is caught, whatever produced it. Its real use is data QP-CAT did not
+create -- hand-drawn classifications, or classes imported from another tool -- where the point
+is usually to tick **Save the result as a new saved result** and turn them into a result. After
+that the saved-result path takes over and this one disappears.
+
+> If you see the manual path and did not expect to, the project has no saved clustering result.
+> Run a clustering analysis (QP-CAT auto-saves every run) and reopen the dialog.
 
 ### Sub-clustering: cluster within a cluster
 

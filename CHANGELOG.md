@@ -54,6 +54,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); QP-
   that could never be clicked, and a radio pair with one dead option reads as a choice the user
   is failing to understand rather than an absent alternative.
 
+- **`tools/qpcat_check_dlls.py`**, for Windows setup failures of the form
+  `DLL load failed while importing <module>: %1 is not a valid Win32 application`. Windows
+  raises that when a binary in the load chain is not a valid 64-bit PE, and names the module
+  you imported rather than the file that is actually broken -- so checking the `.pyd` reports
+  it healthy while a DLL it depends on is the corrupt one. The script scans every binary in
+  the environment and names the empty, truncated or wrong-architecture file. Setup docs now
+  also say to clear the pixi/rattler package cache, not just `.pixi`: the environment is
+  rebuilt from cached downloads, so deleting the environment alone re-extracts the same
+  corrupt bytes.
+
 ### Fixed
 
 - **Lineage set on a result now survives being saved.** `SavedClusteringResult.fromResult`
