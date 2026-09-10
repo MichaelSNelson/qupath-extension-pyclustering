@@ -83,6 +83,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); QP-
   screen to say the target had moved. Opened from the menu, with no result in mind, the full
   list is still shown.
 
+**Bug reporter: optional contact fields, and an honest note about anonymity**
+- Reports are filed by a shared reporting service, not from your GitHub account, so GitHub has
+  nobody to notify -- you would never see a reply unless you went back and commented yourself.
+  The dialog now says this at the top, before you write anything.
+- Two optional contact fields let you stay in the loop: a **GitHub username** (mentioned on the
+  issue, which does notify you) and an **image.sc forum username** (linked to your profile).
+  "alice", "@alice" and a pasted profile URL are all accepted; leave both blank to stay anonymous.
+  Both appear publicly in the issue.
+- New **"Open the issue in my browser after submitting"** checkbox, on by default.
+
 ### Fixed
 
 - **Lineage set on a result now survives being saved.** `SavedClusteringResult.fromResult`
