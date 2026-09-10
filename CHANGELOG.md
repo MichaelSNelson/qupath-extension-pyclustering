@@ -64,6 +64,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); QP-
   rebuilt from cached downloads, so deleting the environment alone re-extracts the same
   corrupt bytes.
 
+- **Modify Clusters opened from a Results window now lists only that result and its versions**
+  -- what it derives from and what derives from it -- instead of every saved result in the
+  project with the right one merely pre-selected. Applying an edit writes a copy of whichever
+  result is selected *and* relabels detections across the images that result covers, so a
+  stray click on an unrelated run was a data change rather than a wrong view, with nothing on
+  screen to say the target had moved. Opened from the menu, with no result in mind, the full
+  list is still shown.
+
 ### Fixed
 
 - **Lineage set on a result now survives being saved.** `SavedClusteringResult.fromResult`

@@ -214,6 +214,13 @@ run labelled, across every image it covered, and no others. It is written as a n
 the original is never touched and you can step back. This is why it is preferred: correctness
 comes from the recorded cell list, not from matching on a name.
 
+**Opened from a Results window, the chooser lists only that result and its versions** -- what
+it was derived from, and what has been derived from it (including its sub-clusters). Unrelated
+runs are not offered. This matters because applying an edit does not just change what you are
+looking at: it writes a copy of whichever result is selected *and* relabels detections across
+the images that result covers, which may be a different set of images entirely. Opened from the
+menu instead, with no result in mind, every saved result is listed.
+
 **Choosing images manually** (only when the project has no saved result at all). There is no
 recorded cell list to work from, so this path matches on the **current class name** instead
 and relabels every detection carrying it in the images you pick. That is a weaker guarantee:

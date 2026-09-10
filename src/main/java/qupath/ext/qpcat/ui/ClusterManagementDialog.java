@@ -128,7 +128,8 @@ public class ClusterManagementDialog {
         List<ClusteringResultManager.ResultEntry> savedResults = new ArrayList<>();
         if (project != null) {
             try {
-                savedResults = ClusteringResultManager.listResultEntries(project);
+                savedResults = visibleResults(
+                        ClusteringResultManager.listResultEntries(project));
             } catch (Exception e) {
                 logger.warn("Could not list saved results: {}", e.getMessage());
             }
@@ -205,8 +206,12 @@ public class ClusterManagementDialog {
             } else {
                 resultChooser.getSelectionModel().selectFirst();
             }
-            manualHint.setText("The result records exactly which cells the run labelled, so an "
-                    + "edit reaches all of them, across every image that run covered, and is "
+            manualHint.setText((presetResultName != null
+                    ? "Only the result you are viewing and its versions are listed, so an edit "
+                      + "cannot land on an unrelated run by accident.  "
+                    : "")
+                    + "The result records exactly which cells the run labelled, so an edit "
+                    + "reaches all of them, across every image that run covered, and is "
                     + "written as a new copy leaving the original untouched.");
         } else {
             manualRadio.setSelected(true);
@@ -237,7 +242,10 @@ public class ClusterManagementDialog {
         VBox scopeBox;
         if (hasSaved) {
             // The result IS the scope; the label states it rather than offering it.
-            Label scopeHeading = new Label("Editing the saved result:");
+            boolean scoped = presetResultName != null;
+            Label scopeHeading = new Label(scoped
+                    ? "Editing this result and its earlier versions:"
+                    : "Editing the saved result:");
             savedBox.setPadding(new Insets(0));
             scopeBox = new VBox(6, scopeHeading, savedBox, manualHint);
         } else {
@@ -375,6 +383,80 @@ public class ClusterManagementDialog {
     }
 
     // --- Cluster list population ------------------------------------------
+
+    /**
+     * The results this dialog is allowed to target.
+     *
+     * <p>Opened from a Results window, that is the result being viewed plus its
+     * version family -- everything it was derived from and everything derived from
+     * it. Opened from the menu with no result in mind, it is everything.
+     *
+     * <p>Filtered rather than merely pre-selected: applying an edit writes a copy
+     * of whatever is selected AND relabels detections across the images THAT result
+     * covers, which may be a different image set entirely. A chooser listing every
+     * result in the project puts an unrelated run one click away from the one you
+     * are looking at, with nothing to say you have moved.
+     *
+     * @param all every saved result in the project
+     * @return the subset this dialog may target, in the given order
+     */
+    private List<ClusteringResultManager.ResultEntry> visibleResults(
+            List<ClusteringResultManager.ResultEntry> all) {
+        if (presetResultName == null || all == null || all.isEmpty()) {
+            return all;
+        }
+        Set<String> family = lineageFamily(all, presetResultName);
+        List<ClusteringResultManager.ResultEntry> out = new ArrayList<>();
+        for (ClusteringResultManager.ResultEntry en : all) {
+            if (en != null && family.contains(en.name)) {
+                out.add(en);
+            }
+        }
+        // A preset naming something not in the list (deleted, renamed on disk)
+        // must not empty the chooser -- fall back to showing everything.
+        return out.isEmpty() ? all : out;
+    }
+
+    /**
+     * Names connected to {@code root} through the derivedFrom graph, in either
+     * direction: the versions it came from, and the versions made from it.
+     *
+     * @param all  every saved result in the project
+     * @param root the result to start from
+     * @return the connected component containing root, including root itself
+     */
+    static Set<String> lineageFamily(List<ClusteringResultManager.ResultEntry> all, String root) {
+        Map<String, String> parentOf = new LinkedHashMap<>();
+        for (ClusteringResultManager.ResultEntry en : all) {
+            if (en != null && en.name != null) {
+                parentOf.put(en.name, en.derivedFrom);
+            }
+        }
+        Set<String> family = new LinkedHashSet<>();
+        if (root == null) return family;
+        family.add(root);
+
+        // Ancestors: follow derivedFrom up. Guarded against a cycle, which a
+        // hand-edited JSON could produce and which would otherwise hang the dialog.
+        String cur = parentOf.get(root);
+        while (cur != null && family.add(cur)) {
+            cur = parentOf.get(cur);
+        }
+
+        // Descendants: repeat until nothing new joins, so a chain of edits several
+        // deep is reached and not just direct children.
+        boolean grew = true;
+        while (grew) {
+            grew = false;
+            for (Map.Entry<String, String> e : parentOf.entrySet()) {
+                if (e.getValue() != null && family.contains(e.getValue())
+                        && family.add(e.getKey())) {
+                    grew = true;
+                }
+            }
+        }
+        return family;
+    }
 
     private boolean isSavedPath() {
         return savedResultRadio != null && savedResultRadio.isSelected();
@@ -915,7 +997,8 @@ public class ClusterManagementDialog {
                 // written looked un-undoable. The cells now carry the copy; the
                 // dialog has to be looking at the same thing they do.
                 try {
-                    resultChooser.getItems().setAll(ClusteringResultManager.listResultEntries(project));
+                    resultChooser.getItems().setAll(visibleResults(
+                            ClusteringResultManager.listResultEntries(project)));
                     for (ClusteringResultManager.ResultEntry en : resultChooser.getItems()) {
                         if (en != null && en.name.equals(fWritten)) {
                             resultChooser.getSelectionModel().select(en);
