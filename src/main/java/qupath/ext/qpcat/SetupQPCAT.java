@@ -439,6 +439,18 @@ public class SetupQPCAT implements QuPathExtension, GitHubProject {
         });
         manageClustersItem.visibleProperty().bind(environmentReady);
 
+        // Analyze current classifications. Read-only, so no backup prompt: it is
+        // the one analysis that cannot change a classification.
+        MenuItem analyzeExistingItem = new MenuItem(res.getString("menu.analyzeExisting"));
+        analyzeExistingItem.setOnAction(e -> {
+            if (qupath.getProject() == null && qupath.getImageData() == null) {
+                Dialogs.showWarningNotification(EXTENSION_NAME, "Open a project or an image first.");
+                return;
+            }
+            ClusteringDialog.forExistingClassifications(qupath).show();
+        });
+        analyzeExistingItem.visibleProperty().bind(environmentReady);
+
         // Export AnnData
         MenuItem exportAnnDataItem = new MenuItem(res.getString("menu.exportAnnData"));
         exportAnnDataItem.setOnAction(e -> exportAnnData(qupath));
@@ -540,6 +552,7 @@ public class SetupQPCAT implements QuPathExtension, GitHubProject {
                 manageResultsItem,
                 new SeparatorMenuItem(),
                 manageClustersItem,
+                analyzeExistingItem,
                 applySavedResultItem,
                 applyPaletteItem);
 

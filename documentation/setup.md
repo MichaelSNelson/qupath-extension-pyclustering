@@ -98,7 +98,15 @@ architecture. It names the module you imported, **not the file that is actually 
 (`igraph.dll`, and in turn `glpk`, `gmp`, `libxml2`, BLAS/LAPACK, the MSVC runtime) is
 the bad one. Checking only the `.pyd` will tell you it is 64-bit and healthy.
 
-Find the real culprit by scanning every binary in the environment:
+**Try the Visual C++ Redistributable first.** This is the confirmed cause of the one
+report we have: conda-forge's `python-igraph` requires `vc14_runtime >= 14.44.35208`,
+and an older system MSVC runtime produces exactly this error. Install the latest
+[Visual C++ Redistributable (x64)](https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist),
+then rebuild the environment as below. It is a two-minute check and it does not depend
+on working out which file is at fault.
+
+If that does not do it, find the real culprit by scanning every binary in the
+environment:
 
 ```
 "%USERPROFILE%\.local\share\appose\qupath-qpcat\.pixi\envs\default\python.exe" tools\qpcat_check_dlls.py
@@ -119,8 +127,9 @@ same corrupt bytes and the failure returns unchanged:
    scanners truncating or quarantining a DLL mid-extract is a common cause.
 5. Relaunch and run **Setup & help > Rebuild analysis environment**.
 
-If the scan reports no problems, the environment is intact and the cause is elsewhere --
-send the scan output with your report.
+If the scan reports no problems, the environment is intact -- which points back at the
+MSVC runtime above, since a system DLL is not inside the environment for the scan to
+find.
 
 **Stale `pkg_resources` / `xarray_schema` import on launch** is a different failure.
 QP-CAT detects it, wipes the environment and asks you to restart; the second launch

@@ -6,6 +6,7 @@ or push it onto another image's detections.
 - [Judging a result](#judging-a-result)
 - [Modifying clusters: rename, merge, split, sub-cluster](#modifying-clusters)
 - [The two editing paths, and which one you get](#the-two-paths-and-which-one-you-get)
+- [Seeing a sub-cluster next to its parent clusters](#seeing-a-sub-cluster-next-to-the-clusters-it-came-from)
 - [Sub-clustering](#sub-clustering-cluster-within-a-cluster)
 - [Gating cells on a 2D plot](#gating-cells-on-a-2d-plot)
 - [Applying a saved result to detections](#applying-a-saved-result-to-detections)
@@ -260,6 +261,44 @@ markers.
   renamed or merged in Manage Clusters.
 
 ---
+## Seeing a sub-cluster next to the clusters it came from
+
+Load a sub-cluster result and you see `Cluster 1.0`, `Cluster 1.1`, ... and nothing else --
+no `Cluster 0`, no `Cluster 2`. That is not a display problem. A saved result is a snapshot of
+**one run's cells**, and the sub-cluster run only extracted `Cluster 1`'s cells; the others were
+never in it, so there is nothing to draw.
+
+The combined labelling does exist -- on the objects. After sub-clustering the cells carry
+`Cluster 0`, `Cluster 2` and `Cluster 1.0 ... N` all at once.
+
+**Extensions > QP-CAT > Results & populations > Analyze current cell classifications...**
+reads that state and computes the full analysis over it: heatmap, marker rankings, composition
+tabs and embedding, with every population present. Marker Rankings then answers the question
+sub-clustering on its own cannot -- how the sub-clusters differ from the parent's *other*
+clusters, not just from each other.
+
+**It writes nothing.** No classification is created, changed or removed. It is the read-only
+counterpart to clustering, which matters because it deliberately reads classes QP-CAT did not
+create.
+
+Because it reads the **objects**, not a saved result, the cells have to be carrying the
+labelling you want to see. Straight after a sub-cluster run they are. To get back there from
+saved results later, apply the parent result and then the sub-cluster result -- applying only
+relabels each result's own cells, so the sub-cluster overwrites `Cluster 1`'s cells and leaves
+the rest as the parent set them -- then run the analysis.
+
+It is not limited to sub-clusters: it works over phenotyping output, hand-edited classes, or an
+imported classifier's labels, and gives any of them a full results window.
+
+Two things to know before running it:
+
+- **Untick the run's own outputs.** After a clustering run the measurement list includes that
+  run's `UMAP1/2/3` and `QPCAT spatial:` columns. Analysing those is circular -- you would be
+  grouping cells on coordinates derived from their own clusters. Select the marker measurements.
+- **Unclassified cells are excluded**, and the count is shown. An unclassified bucket is a
+  mixture rather than a population; including it would pull every marker mean toward the
+  unlabelled remainder and give the ranking a comparison group that means nothing.
+
 ## Gating cells on a 2D plot
 
 Draw a polygon ("gate") around a group of points on a 2D scatter and act on the

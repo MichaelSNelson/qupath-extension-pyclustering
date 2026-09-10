@@ -36,6 +36,8 @@ import qupath.ext.qpcat.service.ClusterPalette;
 import qupath.ext.qpcat.service.PlotRegenerator;
 import qupath.ext.qpcat.service.ResultApplier;
 import qupath.ext.qpcat.service.ClusteringResultManager;
+import qupath.ext.qpcat.service.DetectionSelector;
+import qupath.ext.qpcat.service.ExistingLabelReader;
 import qupath.ext.qpcat.preferences.QpcatPreferences;
 import qupath.ext.qpcat.service.MeasurementExtractor;
 import qupath.ext.qpcat.service.OperationLogger;
@@ -86,6 +88,22 @@ public class ClusteringDialog {
     // Non-null puts the dialog in sub-cluster mode: it re-clusters only the cells
     // of this class and writes "<parent>.0 / .1" labels, instead of a top-level
     // run over every cell. Set by the Manage Clusters "Sub-cluster..." action.
+    /**
+     * What this dialog is about to run. A second boolean flag beside
+     * {@code subclusterParentClass} would make the state ambiguous (four
+     * combinations, one of them meaningless), so the mode is named once and the
+     * class name is just its payload.
+     */
+    enum RunMode {
+        /** Cluster the cells from their measurements. */
+        CLUSTER,
+        /** Re-cluster one class's cells into '<name>.N' sub-labels. */
+        SUBCLUSTER,
+        /** Analyse the classifications already on the cells. Writes nothing. */
+        ANALYZE_EXISTING
+    }
+
+    private final RunMode mode;
     private final String subclusterParentClass;
     // Saved result the parent class came from, so the sub-cluster records a real
     // parent instead of naming the class in free text. Null when sub-clustering
@@ -242,23 +260,54 @@ public class ClusteringDialog {
                             String subclusterSourceResult) {
         this.qupath = qupath;
         this.owner = qupath.getStage();
+        this.mode = subclusterParentClass != null ? RunMode.SUBCLUSTER : RunMode.CLUSTER;
         this.subclusterParentClass = subclusterParentClass;
         this.subclusterSourceResult = subclusterSourceResult;
     }
 
+    private ClusteringDialog(QuPathGUI qupath, RunMode mode) {
+        this.qupath = qupath;
+        this.owner = qupath.getStage();
+        this.mode = mode;
+        this.subclusterParentClass = null;
+        this.subclusterSourceResult = null;
+    }
+
+    /**
+     * A dialog that analyses the classifications already on the cells.
+     *
+     * <p>Read-only: it computes the same heatmap, marker rankings, composition and
+     * embedding as a clustering run, but over the classes the objects already
+     * carry, and never writes a classification back. This is how a sub-cluster is
+     * seen alongside the clusters it came from -- the combined labelling lives on
+     * the objects, not in any one saved result.
+     *
+     * @param qupath the QuPath instance
+     * @return a dialog in {@link RunMode#ANALYZE_EXISTING}
+     */
+    public static ClusteringDialog forExistingClassifications(QuPathGUI qupath) {
+        return new ClusteringDialog(qupath, RunMode.ANALYZE_EXISTING);
+    }
+
     public void show() {
-        boolean subcluster = subclusterParentClass != null;
+        boolean subcluster = mode == RunMode.SUBCLUSTER;
+        boolean analyzeExisting = mode == RunMode.ANALYZE_EXISTING;
 
         Dialog<ButtonType> dialog = new Dialog<>();
         dialog.initOwner(owner);
         dialog.initModality(Modality.NONE);
         dialog.setTitle(subcluster
                 ? "QPCAT - Sub-cluster '" + subclusterParentClass + "'"
-                : "QPCAT - Run Clustering");
+                : analyzeExisting
+                    ? "QPCAT - Analyze current classifications"
+                    : "QPCAT - Run Clustering");
         dialog.setHeaderText(subcluster
                 ? "Re-cluster cells classified as '" + subclusterParentClass
                         + "' into sub-labels -- choose the scope below"
-                : "Configure clustering parameters");
+                : analyzeExisting
+                    ? "Analyse the classifications already on the cells. Nothing is "
+                      + "re-clustered and no classification is changed."
+                    : "Configure clustering parameters");
         dialog.setResizable(true);
 
         // Sub-cluster mode uses the same scope picker as a normal run; it just
@@ -296,7 +345,7 @@ public class ClusteringDialog {
                 new Separator(),
                 createEmbeddingSection(),
                 new Separator(),
-                createAlgorithmSection(),
+                analyzeExisting ? createClassificationsSection() : createAlgorithmSection(),
                 new Separator(),
                 createAnalysisSection(),
                 new Separator(),
@@ -333,7 +382,8 @@ public class ClusteringDialog {
 
         // Add Run button
         ButtonType runType = new ButtonType(
-                subcluster ? "Run Sub-clustering" : "Run Clustering",
+                subcluster ? "Run Sub-clustering"
+                        : analyzeExisting ? "Analyze" : "Run Clustering",
                 ButtonBar.ButtonData.OK_DONE);
         dialog.getDialogPane().getButtonTypes().add(runType);
 
@@ -611,6 +661,192 @@ public class ClusteringDialog {
     private static void setRowShown(javafx.scene.Node node, boolean shown) {
         node.setVisible(shown);
         node.setManaged(shown);
+    }
+
+    // --- Analyze current classifications --------------------------------
+
+    /** One class found in the scope, with its cell count and whether to include it. */
+    private static final class ClassRow {
+        final String name;
+        final int count;
+        final javafx.beans.property.BooleanProperty included =
+                new javafx.beans.property.SimpleBooleanProperty(true);
+
+        ClassRow(String name, int count) {
+            this.name = name;
+            this.count = count;
+        }
+    }
+
+    private ListView<ClassRow> classificationsList;
+    private final ObservableList<ClassRow> classRows = FXCollections.observableArrayList();
+    private Label classificationsStatus;
+
+    /**
+     * The classes to analyse, in place of the algorithm picker.
+     *
+     * <p>This mode has no algorithm -- the groups already exist. What replaces that
+     * choice is which of them to include, so the run is legible before it starts.
+     */
+    private TitledPane createClassificationsSection() {
+        classificationsList = new ListView<>(classRows);
+        classificationsList.setPrefHeight(180);
+        classificationsList.setCellFactory(lv -> new ListCell<>() {
+            private final CheckBox check = new CheckBox();
+
+            @Override
+            protected void updateItem(ClassRow row, boolean empty) {
+                super.updateItem(row, empty);
+                if (empty || row == null) {
+                    setGraphic(null);
+                    return;
+                }
+                check.setText(row.name + "  (" + row.count + " cells)");
+                // Unbind before rebinding: cells are recycled across rows, and a
+                // stale bidirectional binding would tick the wrong class.
+                check.selectedProperty().unbind();
+                check.setSelected(row.included.get());
+                check.selectedProperty().addListener((o, was, now) -> row.included.set(now));
+                setGraphic(check);
+            }
+        });
+
+        classificationsStatus = new Label();
+        classificationsStatus.setWrapText(true);
+        classificationsStatus.setMaxWidth(Double.MAX_VALUE);
+        classificationsStatus.setStyle("-fx-text-fill: #555; -fx-font-size: 11px;");
+
+        Button refresh = new Button("Refresh list");
+        refresh.setTooltip(Tooltips.of(
+                "Re-read the classes from the cells in the chosen scope. Use this after "
+                + "changing the scope, or after renaming or sub-clustering."));
+        refresh.setOnAction(e -> refreshClassifications());
+
+        Label hint = new Label(
+                "Cells with no classification are excluded -- an unclassified bucket is a "
+                + "mixture, not a population, and would distort every marker mean. Untick a "
+                + "class to leave it out of the comparison entirely.");
+        hint.setWrapText(true);
+        hint.setMaxWidth(Double.MAX_VALUE);
+        hint.setStyle("-fx-text-fill: #555; -fx-font-size: 11px;");
+
+        VBox box = new VBox(6, hint, classificationsList, classificationsStatus, refresh);
+        // Reading classes means opening every image in scope, so it is not done
+        // while building the dialog; the first refresh is kicked off after it shows.
+        Platform.runLater(this::refreshClassifications);
+        if (scopeSection != null) {
+            scopeSection.addScopeChangeListener(this::refreshClassifications);
+        }
+
+        TitledPane pane = new TitledPane("Classifications to analyze", box);
+        pane.setCollapsible(false);
+        return pane;
+    }
+
+    /**
+     * Re-read the classes in the current scope, off the FX thread.
+     *
+     * <p>Counting means opening every image in scope, which is why this is not done
+     * inline: on a project-wide scope it would freeze the dialog with nothing on
+     * screen saying why.
+     */
+    private void refreshClassifications() {
+        if (classificationsList == null) return;
+        List<ProjectImageEntry<BufferedImage>> entries = null;
+        Project<BufferedImage> project = qupath.getProject();
+        if (scopeSection != null && !scopeSection.isCurrentImage() && project != null) {
+            if (scopeSection.isSpecificButEmpty()) {
+                classRows.clear();
+                classificationsStatus.setText("Choose at least one image.");
+                return;
+            }
+            entries = scopeSection.resolveEntries();
+            if (entries == null) entries = project.getImageList();
+        }
+
+        Set<String> keep = new LinkedHashSet<>();
+        for (ClassRow r : classRows) {
+            if (r.included.get()) keep.add(r.name);
+        }
+        boolean hadRows = !classRows.isEmpty();
+
+        classificationsStatus.setText("Reading classifications...");
+        final List<ProjectImageEntry<BufferedImage>> scope = entries;
+        Thread t = new Thread(() -> {
+            Map<String, Integer> counts = new LinkedHashMap<>();
+            int unclassified = 0;
+            try {
+                if (scope == null) {
+                    ImageData<BufferedImage> data = qupath.getImageData();
+                    if (data != null) {
+                        counts = ExistingLabelReader.countByClass(
+                                DetectionSelector.filterToCellsWhenPresent(
+                                        data.getHierarchy().getDetectionObjects(), "preview"));
+                    }
+                } else {
+                    for (ProjectImageEntry<BufferedImage> en : scope) {
+                        ImageData<BufferedImage> data = null;
+                        try {
+                            data = en.readImageData();
+                            Map<String, Integer> one = ExistingLabelReader.countByClass(
+                                    DetectionSelector.filterToCellsWhenPresent(
+                                            data.getHierarchy().getDetectionObjects(), "preview"));
+                            for (Map.Entry<String, Integer> e : one.entrySet()) {
+                                counts.merge(e.getKey(), e.getValue(), Integer::sum);
+                            }
+                        } catch (Exception ex) {
+                            logger.warn("Could not read classes from {}: {}",
+                                    en.getImageName(), ex.getMessage());
+                        } finally {
+                            // Never close the open image out from under the viewer.
+                            ImageDataResources.closeUnless(data, qupath.getImageData());
+                        }
+                    }
+                }
+            } catch (Exception ex) {
+                logger.error("Could not read classifications", ex);
+            }
+            // countByClass files unclassified cells under a null key.
+            unclassified = counts.getOrDefault(null, 0);
+            counts.remove(null);
+            final Map<String, Integer> found = counts;
+            final int unclassifiedCount = unclassified;
+            Platform.runLater(() -> {
+                classRows.clear();
+                for (Map.Entry<String, Integer> e : found.entrySet()) {
+                    ClassRow row = new ClassRow(e.getKey(), e.getValue());
+                    // Keep the user's ticks across a refresh; a class that is new
+                    // since the last read starts included.
+                    row.included.set(!hadRows || keep.contains(e.getKey()));
+                    classRows.add(row);
+                }
+                StringBuilder sb = new StringBuilder();
+                sb.append(found.size()).append(" class(es) found");
+                if (unclassifiedCount > 0) {
+                    sb.append("; ").append(unclassifiedCount)
+                      .append(" unclassified cell(s) will be excluded");
+                }
+                sb.append('.');
+                classificationsStatus.setText(sb.toString());
+                refreshRunCostLabel();
+            });
+        }, "QPCAT-ReadClassifications");
+        t.setDaemon(true);
+        t.start();
+    }
+
+    /** Classes the user has ticked, or null when every class is included. */
+    private Set<String> includedClasses() {
+        Set<String> included = new LinkedHashSet<>();
+        boolean all = true;
+        for (ClassRow r : classRows) {
+            if (r.included.get()) {
+                included.add(r.name);
+            } else {
+                all = false;
+            }
+        }
+        return all ? null : included;
     }
 
     private TitledPane createAlgorithmSection() {
@@ -2428,7 +2664,7 @@ public class ClusteringDialog {
      */
     /** True when a sub-cluster run needs scope-wide counts it does not yet hold. */
     private boolean needsSubclusterCount(List<ProjectImageEntry<BufferedImage>> subsetEntries) {
-        if (subclusterParentClass == null || pendingSubclusterCounts != null) {
+        if (mode != RunMode.SUBCLUSTER || pendingSubclusterCounts != null) {
             return false;
         }
         return scopeSection.isAllImages() || subsetEntries != null;
@@ -2490,7 +2726,13 @@ public class ClusteringDialog {
             List<ProjectImageEntry<BufferedImage>> subsetEntries) {
         boolean projectScope = scopeSection.isAllImages() || subsetEntries != null;
 
-        if (subclusterParentClass != null) {
+        if (mode == RunMode.ANALYZE_EXISTING) {
+            // Nothing is written by this mode, so there is nothing to confirm.
+            // Prompting anyway would teach users to click through a warning that
+            // does not apply, which is how a real one gets clicked through too.
+            return true;
+        }
+        if (mode == RunMode.SUBCLUSTER) {
             // Sub-clustering only rewrites cells that already carry the parent
             // class, so name that class rather than warning about "ALL
             // classifications". Matching is by class NAME, so an image whose cells
@@ -2617,6 +2859,15 @@ public class ClusteringDialog {
         // cells -- a previous clustering run, phenotyping, a hand-drawn
         // classifier -- is overwritten. Mirrors the same confirmation the
         // phenotyping dialog has always shown, which clustering lacked.
+        // The ticked classes, read on the FX thread before the run thread starts.
+        final Set<String> chosenClasses =
+                mode == RunMode.ANALYZE_EXISTING ? includedClasses() : null;
+        if (mode == RunMode.ANALYZE_EXISTING && chosenClasses != null && chosenClasses.isEmpty()) {
+            Dialogs.showWarningNotification("QPCAT",
+                    "Tick at least one classification to analyze.");
+            return;
+        }
+
         // The sub-cluster confirmation reports real per-image counts, which means
         // opening every image in scope. Project scope is now the DEFAULT for a
         // sub-cluster, so doing that inline would freeze the dialog on every Run
@@ -2630,8 +2881,11 @@ public class ClusteringDialog {
             return;
         }
 
-        // Warn before overwriting existing embedding coordinate columns.
-        if (config.getEmbeddingMethod() != EmbeddingMethod.NONE) {
+        // Warn before overwriting existing embedding coordinate columns. Not in
+        // ANALYZE_EXISTING: that mode applies nothing to the objects, so no column
+        // is overwritten and the prompt would be a false alarm.
+        if (mode != RunMode.ANALYZE_EXISTING
+                && config.getEmbeddingMethod() != EmbeddingMethod.NONE) {
             String embName = config.getEmbeddingParams() == null ? null
                     : (String) config.getEmbeddingParams().get("name");
             String prefix = ResultApplier.getEmbeddingPrefix(
@@ -2692,7 +2946,23 @@ public class ClusteringDialog {
                 int subclusterScopeImages = 1;
                 boolean subclusterProjectWide = false;
 
-                if (subclusterParentClass != null && config.isClusterEntireProject()) {
+                if (mode == RunMode.ANALYZE_EXISTING) {
+                    // Read-only: the labels come from the classes already on the
+                    // cells. Nothing is written back, which is why this path never
+                    // touches ResultApplier.
+                    List<ProjectImageEntry<BufferedImage>> entries = null;
+                    if (config.isClusterEntireProject()) {
+                        Project<BufferedImage> project = qupath.getProject();
+                        if (project == null) {
+                            throw new Exception("No project is open.");
+                        }
+                        entries = (subsetEntries != null)
+                                ? subsetEntries : project.getImageList();
+                    }
+                    clusteredScope = entries;
+                    result = workflow.runExistingLabelAnalysis(
+                            config, entries, chosenClasses, progress);
+                } else if (mode == RunMode.SUBCLUSTER && config.isClusterEntireProject()) {
                     // Project-wide sub-cluster: pool the parent class's cells across
                     // the selected images, re-cluster once so the sub-labels are
                     // comparable, then relabel and save each image.
@@ -2708,7 +2978,7 @@ public class ClusteringDialog {
                     result = workflow.runProjectSubclustering(
                             subclusterParentClass, entries, subclusterSourceResult,
                             config, progress);
-                } else if (subclusterParentClass != null) {
+                } else if (mode == RunMode.SUBCLUSTER) {
                     // Single-image sub-cluster: relabel the open image in place.
                     clusteredScope = null;
                     result = workflow.runSubclustering(

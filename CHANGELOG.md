@@ -4,9 +4,20 @@ All notable changes to QP-CAT (the QuPath cluster analysis tools extension) are 
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); QP-CAT is in pre-release so no formal semver compatibility commitment is made yet. Breaking changes within `0.x` are called out explicitly.
 
-## [Unreleased]
+## [0.12.0] -- 2026-09-09 -- see a sub-cluster next to the clusters it came from
 
 ### Added
+
+- **Analyze current cell classifications.** *Extensions > QP-CAT > Results & populations >
+  Analyze current cell classifications...* computes the full analysis -- heatmap, marker
+  rankings, composition, embedding -- over the classes the cells already carry, whatever
+  produced them. This is how a sub-cluster is seen **alongside the clusters it came from**: a
+  sub-cluster result contains only the sub-clustered population, so it can never show
+  `Cluster 0` and `Cluster 2` next to `Cluster 1.0 ... N` -- those cells were not in the
+  extraction. The combined labelling lives on the objects, and this reads it. Also works over
+  phenotyping output, hand-edited classes and imported classifiers. **It writes nothing**: no
+  classification is created, changed or removed, which is the point -- it reads classes QP-CAT
+  did not create.
 
 - **Split a merged cluster back apart.** *Modify cell populations* -> select a merged
   cluster -> **Split...** lists the clusters it was made from and separates out the ones
