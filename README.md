@@ -125,13 +125,13 @@ For even faster exploration, use **Quick Cluster** submenu items which run with 
 ### Sample data
 
 No data of your own yet? Try the
-**[TME-QUANT synthetic dataset](https://github.com/uw-loci/tme-quant-synthetic-data)**
--- a small, fully ground-truthed synthetic tumor-microenvironment (8 images, 8
-channels, 6 cell types in tissue niches). Every cell has a known type, marker
-positivity, and tissue region, so you can run clustering, phenotyping, spatial
-statistics, or batch correction and check the result against the truth. Download
-the dataset from its
-[latest release](https://github.com/uw-loci/tme-quant-synthetic-data/releases/latest).
+**[multiplex synthetic dataset](https://github.com/uw-loci/multiplex-synthetic-data)**
+-- a small, fully ground-truthed synthetic multiplexed dataset (8 images, 8
+channels, 6 cell types in schematic tissue niches). Every cell has a known type,
+marker positivity, and tissue region, so you can run clustering, phenotyping,
+spatial statistics, or batch correction and check the result against the truth.
+Download the dataset from its
+[latest release](https://github.com/uw-loci/multiplex-synthetic-data/releases/latest).
 
 ---
 
